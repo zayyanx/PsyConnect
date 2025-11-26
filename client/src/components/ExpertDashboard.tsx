@@ -1,0 +1,192 @@
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { AlertTriangle, CheckCircle, Clock, Search, Filter, TrendingDown } from "lucide-react";
+import ConversationCard, { type ConversationCardProps } from "./ConversationCard";
+import { cn } from "@/lib/utils";
+
+export interface MedicalDashboardProps {
+  userRole: "nurse" | "doctor";
+  userName?: string;
+  conversations?: ConversationCardProps[];
+  onViewConversation?: (id: string) => void;
+  onReviewConversation?: (id: string) => void;
+  onEscalateToDoctor?: (id: string) => void;
+  className?: string;
+  pageTitle?: string;
+  pageSubtitle?: string;
+}
+
+export default function MedicalDashboard({
+  userRole,
+  userName = userRole === "doctor" ? "Dr. Sarah Wilson" : "Nurse Jennifer Adams",
+  conversations = [],
+  onViewConversation,
+  onReviewConversation,
+  onEscalateToDoctor,
+  className,
+  pageTitle,
+  pageSubtitle,
+}: MedicalDashboardProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Calculate counts for stats cards
+  const counts = {
+    pending: userRole === "nurse" 
+      ? conversations.filter(c => c.status === "pending_review" || c.needsNurseReview).length
+      : conversations.filter(c => c.needsDoctorReview || c.escalatedToDoctor).length,
+    active: conversations.filter(c => c.status === "active").length,
+    reviewed: conversations.filter(c => c.status === "reviewed").length,
+  };
+  
+  // Filter and sort conversations based on search - always rank by confidence (lowest first)
+  const filteredConversations = conversations
+    .filter(conv => {
+      const matchesSearch = conv.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           conv.patientName.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesSearch;
+    })
+    .sort((a, b) => (a.confidenceScore || 100) - (b.confidenceScore || 100));
+
+  // Get priority conversations based on role - using <90% threshold for nurse triage
+  const priorityConversations = userRole === "nurse" 
+    ? conversations.filter(c => c.confidenceScore < 90 || c.needsNurseReview)
+    : conversations.filter(c => c.escalatedToDoctor || c.needsDoctorReview);
+
+  return (
+    <div className={cn("space-y-6", className)} data-testid="medical-dashboard">
+      {/* Header */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="dashboard-title">
+              {pageTitle || (userRole === "nurse" ? "Nurse Dashboard" : "Doctor Dashboard")}
+            </h1>
+            <p className="text-muted-foreground" data-testid="user-name">
+              {pageSubtitle || `Welcome back, ${userName}`}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" data-testid="button-filter">
+              <Filter className="h-4 w-4 mr-2" />
+              Filter
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-warning/10 rounded-lg">
+                  <AlertTriangle className="h-5 w-5 text-warning" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold" data-testid="stat-pending">{counts.pending}</p>
+                  <p className="text-xs text-muted-foreground">Pending Review</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-chart-1/10 rounded-lg">
+                  <Clock className="h-5 w-5 text-chart-1" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold" data-testid="stat-active">{counts.active}</p>
+                  <p className="text-xs text-muted-foreground">Active Cases</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-success/10 rounded-lg">
+                  <CheckCircle className="h-5 w-5 text-success" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold" data-testid="stat-reviewed">{counts.reviewed}</p>
+                  <p className="text-xs text-muted-foreground">Reviewed</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-destructive/10 rounded-lg">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold" data-testid="stat-priority">{priorityConversations.length}</p>
+                  <p className="text-xs text-muted-foreground">High Priority</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search conversations or patients..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10"
+          data-testid="input-search"
+        />
+      </div>
+
+      {/* Info Banner */}
+      <div className="mb-4 p-3 bg-muted/50 rounded-lg">
+        <div className="flex items-center gap-2">
+          <TrendingDown className="h-4 w-4 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            Cases ranked by confidence score (lowest first). Cases below 90% require nurse review.
+          </p>
+        </div>
+      </div>
+
+      {/* Conversations List */}
+      <ScrollArea className="h-[600px]" data-testid="conversations-scroll">
+        <div className="space-y-4 pr-4">
+          {filteredConversations.length === 0 ? (
+            <div className="text-center py-12">
+              <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-medium">No conversations found</h3>
+              <p className="text-muted-foreground mt-2">
+                {searchQuery ? "Try adjusting your search criteria" : "No conversations available"}
+              </p>
+            </div>
+          ) : (
+            filteredConversations.map((conversation) => (
+              <ConversationCard
+                key={conversation.id}
+                {...conversation}
+                viewerRole={userRole}
+                onView={() => onViewConversation?.(conversation.id)}
+                onReview={() => onReviewConversation?.(conversation.id)}
+                onEscalate={userRole === "nurse" ? () => onEscalateToDoctor?.(conversation.id) : undefined}
+              />
+            ))
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+// Legacy export for compatibility
+export { MedicalDashboard as ExpertDashboard };
